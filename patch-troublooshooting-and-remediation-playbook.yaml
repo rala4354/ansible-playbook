@@ -1,6 +1,6 @@
 ---
 - name: Patch Troubleshooting and Remediation for Amazon Linux
-  hosts: myhosts
+  hosts: 10.133.211.73
   become: true
   tasks:
     - name: Check for available disk space
