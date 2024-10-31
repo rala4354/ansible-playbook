@@ -1,0 +1,56 @@
+---
+- name: Patch Troubleshooting and Remediation for Amazon Linux
+  hosts: myhosts
+  become: true
+  tasks:
+    - name: Check for available disk space
+      ansible.builtin.shell: "df / --output=avail -h | tail -1"
+      register: disk_space
+
+    - name: Ensure disk space is above 3GB
+      ansible.builtin.debug:
+        var: disk_space.stdout
+
+    - name: Parse available disk space
+      set_fact:
+        avail_space: "{{ disk_space.stdout.split()[0] }}"
+
+    - name: Ensure disk space is above 3GB
+      ansible.builtin.fail:
+        msg: "Not enough disk space. Require at least 3GB free."
+      when: avail_space.endswith('G') and (avail_space.split('G')[0] | int) < 3
+
+    - name: Check Yum repositories
+      ansible.builtin.command: yum repolist
+      register: repo_list
+
+    - name: Ensure repositories are available
+      ansible.builtin.fail:
+        msg: "No repositories available."
+      when: "'repolist: 0' in repo_list.stdout"
+
+    - name: Check for broken packages
+      command: yum check
+      register: broken_packages
+      ignore_errors: yes
+
+    - name: Fail if broken packages are found
+      ansible.builtin.fail:
+        msg: "Broken packages detected. Please resolve them before proceeding."
+      when: broken_packages.rc != 0
+
+    - name: Check Tanium service status (Optional)
+      ansible.builtin.systemd:
+        name: taniumclient
+        state: started
+      ignore_errors: yes
+
+    - name: Apply minimal security patches
+      ansible.builtin.shell: "yum update-minimal --security -y"
+      register: yum_update_result
+      changed_when: yum_update_result.rc == 0
+
+    - name: Reboot system if required
+      ansible.builtin.reboot:
+        msg: "System is being rebooted after patching."
+      when: ansible_facts['os_family'] == "RedHat" and ansible_facts['distribution'] == "Amazon"
